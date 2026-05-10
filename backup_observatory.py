@@ -236,17 +236,73 @@ def run_rsync(staging_dir, remote, dest_path):
         logger.error("\n❌ Transfer interrupted by user.")
         sys.exit(1)
 
+def preview_archive(tsx_paths):
+    """Preview the files and sizes that will be included in the settings archive."""
+    logger.info("--- Archive Preview (TSX Configs) ---")
+    
+    exclude_paths = []
+    if tsx_paths['imager']: exclude_paths.append(tsx_paths['imager'].resolve())
+    if tsx_paths['guider']: exclude_paths.append(tsx_paths['guider'].resolve())
+    
+    if not tsx_paths['root'].exists():
+        logger.error(f"Root path does not exist: {tsx_paths['root']}")
+        sys.exit(1)
+        
+    root_path = tsx_paths['root'].resolve()
+    total_size = 0
+    file_list = []
+    
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        current_dir = Path(dirpath).resolve()
+        
+        # Check if current_dir is excluded or inside an excluded dir
+        is_excluded = False
+        for ex in exclude_paths:
+            if current_dir == ex or ex in current_dir.parents:
+                is_excluded = True
+                break
+                
+        if is_excluded:
+            # Skip traversing this excluded directory
+            dirnames[:] = []
+            continue
+            
+        for f in filenames:
+            f_path = current_dir / f
+            if f_path.is_file() and not f_path.is_symlink():
+                size = f_path.stat().st_size
+                total_size += size
+                try:
+                    rel_path = f_path.relative_to(root_path)
+                except ValueError:
+                    rel_path = f_path
+                file_list.append((str(rel_path), size))
+                
+    # Sort by size descending
+    file_list.sort(key=lambda x: x[1], reverse=True)
+    
+    logger.info(f"Total files to be archived from config: {len(file_list)}")
+    logger.info(f"Total size: {total_size / (1024*1024):.2f} MB")
+    
+    if file_list:
+        logger.info("Top 20 largest files:")
+        for path, size in file_list[:20]:
+            logger.info(f"  {size / (1024*1024):>7.2f} MB - {path}")
+            
+    sys.exit(0)
+
 def main():
     parser = argparse.ArgumentParser(description="TheSkyX Observatory Backup Script")
     parser.add_argument("--remote", default="armalota@devnull", help="SSH remote user@host (default: armalota@devnull)")
     parser.add_argument("--dest-path", default="/volume1/temp/actually-temp", help="Destination base path on remote (default: /volume1/temp/actually-temp)")
     parser.add_argument("--detect-paths", action="store_true", help="Run path detection heuristics and exit")
+    parser.add_argument("--preview-archive", action="store_true", help="Preview the files and sizes to be archived and exit")
     
     args = parser.parse_args()
     
     logger.info("Initializing Observatory Backup")
     
-    if not args.detect_paths:
+    if not args.detect_paths and not args.preview_archive:
         check_system_tools()
     
     tsx_paths = find_tsx_directories()
@@ -261,6 +317,9 @@ def main():
         if not tsx_paths['imager'] or not tsx_paths['guider']:
             logger.warning("Could not find some expected directories. You may need to take images first.")
         sys.exit(0)
+        
+    if args.preview_archive:
+        preview_archive(tsx_paths)
         
     temp_dir = Path("/tmp/tsx_backup_run")
     temp_dir.mkdir(exist_ok=True)
