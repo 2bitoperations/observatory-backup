@@ -65,7 +65,8 @@ def find_tsx_directories():
     """Heuristic search for TheSkyX data directories."""
     home = Path.home()
     possible_roots = list(home.glob("Software Bisque/TheSkyX*")) + \
-                     list(home.glob("Documents/Software Bisque/TheSkyX*"))
+                     list(home.glob("Documents/Software Bisque/TheSkyX*")) + \
+                     list(home.glob("Library/Application Support/Software Bisque/TheSkyX*"))
     
     if not possible_roots:
         logger.error("Could not find TheSkyX user data directories.")
