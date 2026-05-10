@@ -41,7 +41,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("TSXBackup")
 
-def check_system_tools():
+def check_system_tools(check_reports=False):
     """Ensure required tools are installed before proceeding."""
     # Ensure system binaries are in PATH, as normal users on Debian
     # often don't have /usr/sbin in their PATH, leading to missing hwinfo.
@@ -49,7 +49,10 @@ def check_system_tools():
         if p not in os.environ.get("PATH", "").split(os.pathsep):
             os.environ["PATH"] += f"{os.pathsep}{p}"
 
-    tools = ['lshw', 'hwinfo', 'dpkg-query', 'rsync']
+    tools = ['rsync']
+    if check_reports:
+        tools.extend(['lshw', 'hwinfo', 'dpkg-query'])
+        
     missing = []
     for tool in tools:
         if shutil.which(tool) is None:
@@ -57,7 +60,8 @@ def check_system_tools():
     if missing:
         logger.error(f"Missing required system tools: {', '.join(missing)}")
         logger.error("Please install them before running this script.")
-        logger.error("Hint: apt install lshw hwinfo rsync")
+        hint = "apt install lshw hwinfo rsync" if check_reports else "apt install rsync"
+        logger.error(f"Hint: {hint}")
         sys.exit(1)
     logger.info("All required system tools found.")
 
@@ -301,13 +305,14 @@ def main():
     parser.add_argument("--dest-path", default="/volume1/temp/actually-temp", help="Destination base path on remote (default: /volume1/temp/actually-temp)")
     parser.add_argument("--detect-paths", action="store_true", help="Run path detection heuristics and exit")
     parser.add_argument("--preview-archive", action="store_true", help="Preview the files and sizes to be archived and exit")
+    parser.add_argument("--system-reports", action="store_true", help="Generate hardware and package lists (requires lshw, hwinfo, dpkg-query)")
     
     args = parser.parse_args()
     
     logger.info("Initializing Observatory Backup")
     
     if not args.detect_paths and not args.preview_archive:
-        check_system_tools()
+        check_system_tools(check_reports=args.system_reports)
     
     tsx_paths = find_tsx_directories()
     
@@ -329,7 +334,8 @@ def main():
     temp_dir.mkdir(exist_ok=True)
     
     try:
-        generate_system_reports(temp_dir)
+        if args.system_reports:
+            generate_system_reports(temp_dir)
         archive_path = create_settings_archive(tsx_paths, temp_dir)
         staging_dir = stage_for_rsync(tsx_paths, archive_path, temp_dir)
         run_rsync(staging_dir, args.remote, args.dest_path)
