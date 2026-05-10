@@ -221,11 +221,20 @@ def run_rsync(staging_dir, remote, dest_path):
         "--checksum",        # Use checksums instead of mod-time & size
         "--partial",         # Keep partially transferred files
         "--info=progress2",  # Overall progress and throughput
-        # Exclusions for the main imager
-        "--exclude", "images/main_imager/*@Focus*",
-        "--exclude", "images/main_imager/*Focus*",
-        "--exclude", "images/main_imager/*ClosedLoop*",
-        "--exclude", "images/main_imager/*Guide*",
+        # Include guider darks
+        "--include", "images/guider/**/*Dark*.fit",
+        "--include", "images/guider/**/*Dark*.fits",
+        "--include", "images/guider/**/*dark*.fit",
+        "--include", "images/guider/**/*dark*.fits",
+        # Exclude all other guider fits
+        "--exclude", "images/guider/**/*.fit",
+        "--exclude", "images/guider/**/*.fits",
+        
+        # Exclusions for the main imager (using ** to match within date subdirectories)
+        "--exclude", "images/main_imager/**/*@Focus*",
+        "--exclude", "images/main_imager/**/*Focus*",
+        "--exclude", "images/main_imager/**/*ClosedLoop*",
+        "--exclude", "images/main_imager/**/*Guide*",
         str(staging_dir) + "/",
         remote_dest
     ]
