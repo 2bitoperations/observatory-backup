@@ -85,13 +85,13 @@ def find_tsx_directories():
     }
     
     # Fuzzy heuristic for imager
-    for p in tsx_root.rglob("*Imager Autosave*"):
+    for p in list(tsx_root.rglob("*Imager Autosave*")) + list(tsx_root.rglob("Camera AutoSave/Imager")):
         if p.is_dir():
             paths['imager'] = p
             break
             
     # Guider
-    for p in tsx_root.rglob("*Guider Autosave*"):
+    for p in list(tsx_root.rglob("*Guider Autosave*")) + list(tsx_root.rglob("Camera AutoSave/Guider")):
         if p.is_dir():
             paths['guider'] = p
             break
@@ -140,6 +140,8 @@ def create_settings_archive(tsx_paths, temp_dir):
                 logger.info(f"Adding TSX configs from {tsx_paths['root']}")
                 
                 def filter_excludes(tarinfo):
+                    if tarinfo.name.lower().endswith(('.fit', '.fits')):
+                        return None
                     for ex in exclude_paths:
                         try:
                             rel_ex = ex.relative_to(tsx_paths['root'])
@@ -268,6 +270,8 @@ def preview_archive(tsx_paths):
             continue
             
         for f in filenames:
+            if f.lower().endswith(('.fit', '.fits')):
+                continue
             f_path = current_dir / f
             if f_path.is_file() and not f_path.is_symlink():
                 size = f_path.stat().st_size
