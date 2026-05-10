@@ -43,6 +43,12 @@ logger = logging.getLogger("TSXBackup")
 
 def check_system_tools():
     """Ensure required tools are installed before proceeding."""
+    # Ensure system binaries are in PATH, as normal users on Debian
+    # often don't have /usr/sbin in their PATH, leading to missing hwinfo.
+    for p in ["/usr/sbin", "/sbin"]:
+        if p not in os.environ.get("PATH", "").split(os.pathsep):
+            os.environ["PATH"] += f"{os.pathsep}{p}"
+
     tools = ['lshw', 'hwinfo', 'dpkg-query', 'rsync']
     missing = []
     for tool in tools:
