@@ -233,7 +233,8 @@ def run_rsync(staging_dir, remote, dest_path):
         # Exclusions for the main imager (using ** to match within date subdirectories)
         "--exclude", "images/main_imager/**/*@Focus*",
         "--exclude", "images/main_imager/**/*Focus*",
-        "--exclude", "images/main_imager/**/*ClosedLoop*",
+        "--exclude", "images/main_imager/**/*Closed Loop Slews*",
+        "--exclude", "images/main_imager/**/*Automated Pointing Run*",
         "--exclude", "images/main_imager/**/*Guide*",
         str(staging_dir) + "/",
         remote_dest
