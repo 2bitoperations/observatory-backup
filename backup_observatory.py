@@ -76,6 +76,11 @@ ALWAYS_EXCLUDE_DIRS = [
     "*[Tt]rain*[Pp][Ee][Cc]*",
     ".thumbs",
 ]
+# Files (any source) never backed up. TheSkyX also saves closed-loop slew frames
+# straight into the date folder as "<date>-TSX-CLPA Slew-Light-...".
+ALWAYS_EXCLUDE_FILES = [
+    "*[Cc][Ll][Pp][Aa] [Ss]lew*",
+]
 
 def check_system_tools(check_reports=False, need_rsync=True):
     """Ensure required tools are installed before proceeding."""
@@ -131,7 +136,9 @@ def find_tsx_directories():
             break
             
     # Guider
-    for p in list(tsx_root.rglob("*Guider Autosave*")) + list(tsx_root.rglob("Camera AutoSave/Guider")):
+    # ("Autoguider" is what TheSkyX on Linux names it; it may hold only guiding logs)
+    for p in (list(tsx_root.rglob("*Guider Autosave*")) + list(tsx_root.rglob("Camera AutoSave/Guider"))
+              + list(tsx_root.rglob("Camera AutoSave/Autoguider"))):
         if p.is_dir():
             paths['guider'] = p
             break
@@ -259,6 +266,7 @@ def run_rsync(staging_dir, remote, dest_path):
         "--info=progress2",  # Overall progress and throughput
         # Never-backed-up directories, anywhere (trailing / = directories only)
         *[arg for d in ALWAYS_EXCLUDE_DIRS for arg in ("--exclude", d + "/")],
+        *[arg for f in ALWAYS_EXCLUDE_FILES for arg in ("--exclude", f)],
         # Include guider darks
         "--include", "images/guider/**/*Dark*.fit",
         "--include", "images/guider/**/*Dark*.fits",
@@ -294,7 +302,8 @@ RC_REPO = "git+https://github.com/2bitoperations/rsync-commander"
 
 # Same selection as the rsync filter rules in run_rsync(), in rsync-commander's
 # profile syntax (patterns without '/' match names at any depth).
-ALWAYS_FILTER = [f"- {d}/" for d in ALWAYS_EXCLUDE_DIRS]
+ALWAYS_FILTER = ([f"- {d}/" for d in ALWAYS_EXCLUDE_DIRS]
+                 + [f"- {f}" for f in ALWAYS_EXCLUDE_FILES])
 MAIN_IMAGER_EXCLUDES = ["*@Focus*", "*Focus*", "*Closed Loop Slews*",
                         "*Automated Pointing Run*", "*Guide*"]
 GUIDER_FILTER = ["+ *Dark*.fit", "+ *Dark*.fits", "+ *dark*.fit", "+ *dark*.fits",
