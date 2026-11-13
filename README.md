@@ -1,36 +1,86 @@
-# Observatory Backup Script Complete
+# Observatory Backup
 
-I've successfully written the `backup_observatory.py` script to orchestrate the backups of your TheSkyX setup on Debian.
+`backup_observatory.py` backs up a TheSkyX observatory machine (Debian) to a NAS.
 
-## Features Implemented
-- **Automated Path Heuristics**: The script intelligently searches for TheSkyX data roots in your home folder. You can use the `--detect-paths` flag to do a dry run and ensure it finds your imager and guider paths.
-- **System Profiling**: Generates hardware details via `lshw` and `hwinfo`, and a list of installed packages via `dpkg-query`. If these tools (or `rsync`) are missing, the script gracefully fails with a clear message suggesting an `apt install`.
-- **Snapshot Archives**: Compresses the entirety of TheSkyX settings (excluding large autosaves), udev rules, and the generated system profiles into an `xz` compressed tarball.
-- **Single Rsync Invocation**: By building a `/tmp/rsync_staging/` tree loaded with symlinks to your image directories, logs, and snapshot tarball, the script initiates a *single* `rsync -avhL` command. 
-  - This respects your slow network with `--checksum` and `--partial`.
-  - It explicitly excludes focus loops and guide images.
-  - Using `--info=progress2` yields a smooth terminal-based progress and throughput reading.
-  - Since it's a single transfer run, you'll only be asked for an SSH password once if you aren't using passwordless SSH.
+## What it backs up
 
-## `sudo` and `uv` Support
-Per your note about running this with `sudo` while keeping it compliant with `uv`, I've added a helpful block of documentation to the top of the file. Because the `root` user might not inherit your `PATH` or have `uv` installed, you can launch the backup like this:
+Everything lands under `<dest-path>/<hostname>/` on the remote:
+
+| Path | Contents |
+|---|---|
+| `images/main_imager/` | Imager autosave frames. Focus runs, closed-loop slews, automated pointing runs and guide frames are excluded. |
+| `images/guider/` | Guider **darks** only. |
+| `logs/{Logs,TPoint,Guider}/` | TheSkyX logs. |
+| `snapshots/tsx_settings_backup_<timestamp>.tar.xz` | TheSkyX settings (no FITS, no autosave dirs), udev rules, and with `--system-reports` the `dpkg`/`lshw`/`hwinfo` reports. |
+
+TheSkyX's data root and the imager, guider and log dirs are found by heuristics. Check them with `--detect-paths`.
+
+## Transfer engine
+
+By default the transfer runs through
+[rsync-commander](https://github.com/2bitoperations/rsync-commander). It is
+fetched and cached automatically by `uv tool run` on first use, so there is
+nothing to install by hand besides `uv`. Compared with plain rsync it:
+
+- compares existing files block by block (SHA-1) and sends only changed blocks;
+- verifies every block on both ends;
+- compresses FITS on the wire with zstd (subs typically shrink to 35–50%);
+- resumes interrupted files;
+- uses several parallel ssh streams, which matters on a slow, high-latency link.
+
+**Password prompts: at most one per backup.** If an ssh key works for the
+remote, there are no prompts and the backup uses parallel connections. If not,
+rsync-commander opens a single ssh connection (you type the password once), and
+every stream shares it. Run `ssh-copy-id user@nas` once to get parallel streams
+and no prompt.
+
+If rsync-commander can't be fetched (no `uv`, or no network to GitHub), the script
+falls back to the classic single `rsync -avhL --checksum` run, which also prompts
+at most once. The fallback only happens before any transfer starts, so you are never
+asked twice.
+
+## Usage
 
 ```bash
-sudo -E $(which uv) run backup_observatory.py
-```
-
-## How to Run It
-You can find your new script at:
-[`backup_observatory.py`](file:///Users/armalota/Library/CloudStorage/GoogleDrive-2bitoperations@gmail.com/My%20Drive/armalota-personal/projects/observatory-backup/backup_observatory.py)
-
-Here is a look at the CLI structure:
-```bash
-# Preview paths without making changes
+# Check which directories were detected
 uv run backup_observatory.py --detect-paths
 
-# Run backup to the default destination (armalota@devnull:/volume1/temp/actually-temp)
+# Preview what goes into the settings archive
+uv run backup_observatory.py --preview-archive
+
+# List what would be sent, transfer nothing
+uv run backup_observatory.py --dry-run
+
+# Back up to the default destination
 uv run backup_observatory.py
 
-# Specify explicit destination
-uv run backup_observatory.py --remote backupuser@server --dest-path /volume1/backups/
+# Explicit destination, system reports, fewer streams
+uv run backup_observatory.py --remote backupuser@server --dest-path /volume1/backups --system-reports --workers 2
+
+# Engine control
+uv run backup_observatory.py --engine rsync            # classic rsync only
+uv run backup_observatory.py --engine commander        # rsync-commander only (no fallback)
+uv run backup_observatory.py --update-commander        # re-fetch the latest rsync-commander
+uv run backup_observatory.py --commander-ref <tag|sha> # pin a version
+RC_COMMANDER_DIR=~/src/rsync-commander uv run backup_observatory.py   # use a local checkout
 ```
+
+Other options: `--compression zstd|gzip|none`.
+
+## Running with sudo
+
+`lshw` and `hwinfo` give fuller reports as root. `root` may not have `uv` on its
+PATH, so run:
+
+```bash
+sudo -E $(which uv) run backup_observatory.py --system-reports
+```
+
+Under sudo, ssh uses **root's** keys and known_hosts.
+
+## Notes
+
+- With the classic rsync engine, the destination base directory (`--dest-path`)
+  must already exist on the remote. rsync-commander creates it.
+- Files that are already up to date are verified by checksum, not re-sent. An
+  incremental run sends only new frames and the new settings snapshot.
