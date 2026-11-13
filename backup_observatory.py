@@ -60,6 +60,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("TSXBackup")
 
+# Directories that are NEVER backed up, from any source (imager, guider, logs),
+# by either engine. Patterns match a directory's own name at any depth
+# (rsync-style; [Xx] classes make them case-insensitive). Chosen from what had
+# actually landed on the NAS over time:
+#   "Automated Pointing Run NNN"  TPoint pointing runs
+#   "Closed Loop Slews"           slew-verification frames (431 MiB had leaked)
+#   "bad"                         frames you've binned by hand
+#   "Train PEC NNN" / "TrainPEC Runs"  PEC-training captures
+#   ".thumbs"                     TheSkyX thumbnail cache
+ALWAYS_EXCLUDE_DIRS = [
+    "*[Pp]ointing [Rr]un*",
+    "*[Cc]losed [Ll]oop [Ss]lew*",
+    "[Bb][Aa][Dd]",
+    "*[Tt]rain*[Pp][Ee][Cc]*",
+    ".thumbs",
+]
+
 def check_system_tools(check_reports=False, need_rsync=True):
     """Ensure required tools are installed before proceeding."""
     # Ensure system binaries are in PATH, as normal users on Debian
@@ -240,6 +257,8 @@ def run_rsync(staging_dir, remote, dest_path):
         "--checksum",        # Use checksums instead of mod-time & size
         "--partial",         # Keep partially transferred files
         "--info=progress2",  # Overall progress and throughput
+        # Never-backed-up directories, anywhere (trailing / = directories only)
+        *[arg for d in ALWAYS_EXCLUDE_DIRS for arg in ("--exclude", d + "/")],
         # Include guider darks
         "--include", "images/guider/**/*Dark*.fit",
         "--include", "images/guider/**/*Dark*.fits",
@@ -275,6 +294,7 @@ RC_REPO = "git+https://github.com/2bitoperations/rsync-commander"
 
 # Same selection as the rsync filter rules in run_rsync(), in rsync-commander's
 # profile syntax (patterns without '/' match names at any depth).
+ALWAYS_FILTER = [f"- {d}/" for d in ALWAYS_EXCLUDE_DIRS]
 MAIN_IMAGER_EXCLUDES = ["*@Focus*", "*Focus*", "*Closed Loop Slews*",
                         "*Automated Pointing Run*", "*Guide*"]
 GUIDER_FILTER = ["+ *Dark*.fit", "+ *Dark*.fits", "+ *dark*.fit", "+ *dark*.fits",
@@ -345,13 +365,15 @@ def write_profile(tsx_paths, archive_path, remote, dest_path, temp_dir, args):
 
     if tsx_paths['imager']:
         source(tsx_paths['imager'], "images/main_imager",
-               [f"exclude = {_toml_list(MAIN_IMAGER_EXCLUDES)}"])
+               [f"filter = {_toml_list(ALWAYS_FILTER)}",
+                f"exclude = {_toml_list(MAIN_IMAGER_EXCLUDES)}"])
     else:
         logger.warning("No main imager directory found to back up.")
     if tsx_paths['guider']:
-        source(tsx_paths['guider'], "images/guider", [f"filter = {_toml_list(GUIDER_FILTER)}"])
+        source(tsx_paths['guider'], "images/guider",
+               [f"filter = {_toml_list(ALWAYS_FILTER + GUIDER_FILTER)}"])
     for log_dir in tsx_paths['logs']:
-        source(log_dir, f"logs/{log_dir.name}")
+        source(log_dir, f"logs/{log_dir.name}", [f"filter = {_toml_list(ALWAYS_FILTER)}"])
     if archive_path:
         source(archive_path, f"snapshots/{archive_path.name}")
     profile = temp_dir / "observatory-profile.toml"

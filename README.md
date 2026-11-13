@@ -13,6 +13,15 @@ Everything lands under `<dest-path>/<hostname>/` on the remote:
 | `logs/{Logs,TPoint,Guider}/` | TheSkyX logs. |
 | `snapshots/tsx_settings_backup_<timestamp>.tar.xz` | TheSkyX settings (no FITS, no autosave dirs), udev rules, and with `--system-reports` the `dpkg`/`lshw`/`hwinfo` reports. |
 
+**Never backed up, from any source and with either engine:** directories named
+`Automated Pointing Run NNN` (any `*pointing run*`), `Closed Loop Slews` (any
+`*closed loop slew*`), `bad` (exactly that name, any case; `not bad/` is kept),
+`Train PEC NNN` / `TrainPEC Runs`, and `.thumbs`. An excluded directory is skipped
+whole. These rules come from what had actually piled up on the NAS: 431 MiB of
+closed-loop slews and 314 MiB of focus runs from earlier runs of the old rsync
+filters, and empty pointing-run and PEC folders. The list is `ALWAYS_EXCLUDE_DIRS`
+at the top of the script.
+
 TheSkyX's data root and the imager, guider and log dirs are found by heuristics. Check them with `--detect-paths`.
 
 ## Transfer engine
