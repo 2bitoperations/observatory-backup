@@ -126,6 +126,7 @@ def find_tsx_directories():
         'root': tsx_root,
         'imager': None,
         'guider': None,
+        'calibration': None,
         'logs': []
     }
     
@@ -143,6 +144,13 @@ def find_tsx_directories():
             paths['guider'] = p
             break
             
+    # Calibration library (master darks/biases/flats). The settings snapshot drops
+    # all FITS, so without this the masters were not backed up anywhere.
+    for name in ("Image Calibration",):
+        p = tsx_root / name
+        if p.is_dir():
+            paths['calibration'] = p
+
     # Logs
     for log_name in ["Logs", "TPoint", "Guider"]:
         p = tsx_root / log_name
@@ -238,6 +246,11 @@ def stage_for_rsync(tsx_paths, archive_path, temp_dir):
     if tsx_paths['guider']:
         (images_dir / "guider").symlink_to(tsx_paths['guider'])
         
+    if tsx_paths['calibration']:
+        cal_dir = staging_dir / "calibration"
+        cal_dir.mkdir()
+        (cal_dir / tsx_paths['calibration'].name).symlink_to(tsx_paths['calibration'])
+
     if tsx_paths['logs']:
         logs_dir = staging_dir / "logs"
         logs_dir.mkdir()
@@ -267,14 +280,8 @@ def run_rsync(staging_dir, remote, dest_path):
         # Never-backed-up directories, anywhere (trailing / = directories only)
         *[arg for d in ALWAYS_EXCLUDE_DIRS for arg in ("--exclude", d + "/")],
         *[arg for f in ALWAYS_EXCLUDE_FILES for arg in ("--exclude", f)],
-        # Include guider darks
-        "--include", "images/guider/**/*Dark*.fit",
-        "--include", "images/guider/**/*Dark*.fits",
-        "--include", "images/guider/**/*dark*.fit",
-        "--include", "images/guider/**/*dark*.fits",
-        # Exclude all other guider fits
-        "--exclude", "images/guider/**/*.fit",
-        "--exclude", "images/guider/**/*.fits",
+        # Guider: everything is kept (calibration frames, manual captures, logs);
+        # TheSkyX doesn't autosave autoguiding-loop frames there.
         
         # Exclusions for the main imager (using ** to match within date subdirectories)
         "--exclude", "images/main_imager/**/*@Focus*",
@@ -306,8 +313,10 @@ ALWAYS_FILTER = ([f"- {d}/" for d in ALWAYS_EXCLUDE_DIRS]
                  + [f"- {f}" for f in ALWAYS_EXCLUDE_FILES])
 MAIN_IMAGER_EXCLUDES = ["*@Focus*", "*Focus*", "*Closed Loop Slews*",
                         "*Automated Pointing Run*", "*Guide*"]
-GUIDER_FILTER = ["+ *Dark*.fit", "+ *Dark*.fits", "+ *dark*.fit", "+ *dark*.fits",
-                 "- *.fit", "- *.fits"]
+# Guider: keep everything (darks/biases/flats, manually captured frames, guiding
+# logs), minus the ALWAYS rules. Months of autoguiding left only logs in the
+# Autoguider folder, i.e. TheSkyX doesn't autosave guide-loop frames, so anything
+# that lands there was captured on purpose.
 
 
 def find_uv():
@@ -379,8 +388,10 @@ def write_profile(tsx_paths, archive_path, remote, dest_path, temp_dir, args):
     else:
         logger.warning("No main imager directory found to back up.")
     if tsx_paths['guider']:
-        source(tsx_paths['guider'], "images/guider",
-               [f"filter = {_toml_list(ALWAYS_FILTER + GUIDER_FILTER)}"])
+        source(tsx_paths['guider'], "images/guider", [f"filter = {_toml_list(ALWAYS_FILTER)}"])
+    if tsx_paths['calibration']:
+        source(tsx_paths['calibration'], f"calibration/{tsx_paths['calibration'].name}",
+               [f"filter = {_toml_list(ALWAYS_FILTER)}"])
     for log_dir in tsx_paths['logs']:
         source(log_dir, f"logs/{log_dir.name}", [f"filter = {_toml_list(ALWAYS_FILTER)}"])
     if archive_path:
@@ -509,6 +520,7 @@ def main():
         logger.info(f"Root:   {tsx_paths['root']}")
         logger.info(f"Imager: {tsx_paths['imager']}")
         logger.info(f"Guider: {tsx_paths['guider']}")
+        logger.info(f"Calibration library: {tsx_paths['calibration']}")
         logger.info(f"Logs:   {', '.join(str(p) for p in tsx_paths['logs']) if tsx_paths['logs'] else 'None'}")
         
         if not tsx_paths['imager'] or not tsx_paths['guider']:

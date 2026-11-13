@@ -8,8 +8,9 @@ Everything lands under `<dest-path>/<hostname>/` on the remote:
 
 | Path | Contents |
 |---|---|
-| `images/main_imager/` | Imager autosave frames. Focus runs, closed-loop slews, automated pointing runs and guide frames are excluded. |
-| `images/guider/` | Guider **darks** and guiding logs (TheSkyX on Linux calls the folder `Autoguider`). |
+| `images/main_imager/` | Imager autosave frames, including calibration frames (darks, biases, flats). Focus runs and guide frames are excluded, plus the always-excluded folders below. |
+| `images/guider/` | Everything in the guider autosave folder: calibration frames (darks, biases, flats), manually captured guider images, and guiding logs. TheSkyX on Linux calls the folder `Autoguider`, and it doesn't autosave autoguiding-loop frames, so anything there was captured on purpose. |
+| `calibration/Image Calibration/` | TheSkyX's calibration library (master darks, biases, flats). The settings snapshot excludes FITS, so this is the only copy. |
 | `logs/{Logs,TPoint,Guider}/` | TheSkyX logs. |
 | `snapshots/tsx_settings_backup_<timestamp>.tar.xz` | TheSkyX settings (no FITS, no autosave dirs), udev rules, and with `--system-reports` the `dpkg`/`lshw`/`hwinfo` reports. |
 
